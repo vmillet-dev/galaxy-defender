@@ -5,11 +5,12 @@ import { InputService } from '../../services/input.service';
 import { Subscription } from 'rxjs';
 import { Enemy, PlayerShip, PowerUp, Projectile, GameState, VisualEffect } from '../../models/game-types';
 import { EnemyType, PowerUpType, VisualEffectType, WeaponType, Direction } from '../../models/game-types';
+import { VirtualJoystickComponent } from '../virtual-joystick/virtual-joystick.component';
 
 @Component({
   selector: 'app-game-board',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, VirtualJoystickComponent],
   templateUrl: './game-board.component.html',
   styleUrls: ['./game-board.component.scss']
 })
@@ -42,7 +43,13 @@ export class GameBoardComponent implements OnInit, OnDestroy {
     this.ctx = canvas.getContext('2d')!;
     this.setupCanvas();
     this.startGame();
-    this.setupInputHandlers();
+
+    // Subscribe to continuous movement updates
+    this.inputService.setupInputHandlers(canvas.parentElement!).subscribe(movement => {
+      if (movement.dx !== 0 || movement.dy !== 0) {
+        this.gameService.updatePlayerPosition(movement);
+      }
+    });
   }
 
   ngOnDestroy(): void {
@@ -98,18 +105,33 @@ export class GameBoardComponent implements OnInit, OnDestroy {
       this.render(gameState);
     });
   }
-
   private setupInputHandlers(): void {
-    // Handle keyboard controls directly in component
-    window.addEventListener('keydown', (event: KeyboardEvent) => {
-      this.handleKeyboardInput(event.key, true);
-    });
-    window.addEventListener('keyup', (event: KeyboardEvent) => {
-      this.handleKeyboardInput(event.key, false);
-    });
+    // Touch controls are handled by virtual joystick
+    const gameContainer = this.canvas.nativeElement.parentElement!;
+
+    // Setup fire event handler for mobile
+    if (this.isMobileDevice) {
+      gameContainer.addEventListener('touchstart', (event: TouchEvent) => {
+        event.preventDefault();
+        const touch = event.touches[0];
+        const rect = gameContainer.getBoundingClientRect();
+        const y = touch.clientY - rect.top;
+
+        // Fire if touch is in the upper half of the screen
+        if (y < rect.height / 2) {
+          this.handleFireTouch();
+        }
+      });
+    }
+  }
+
+  // Handle joystick movement events
+  public onJoystickMove(movement: { dx: number; dy: number }): void {
+    this.inputService.updateJoystickMovement(movement);
   }
 
   public handleDirectionalTouch(direction: Direction | 'none'): void {
+    // Only used for mobile touch controls now
     if (direction === 'none') {
       this.gameService.stopPlayerMovement();
     } else {
@@ -119,21 +141,6 @@ export class GameBoardComponent implements OnInit, OnDestroy {
 
   public handleFireTouch(): void {
     this.gameService.fireWeapon();
-  }
-
-  private handleKeyboardInput(key: string, isKeyDown: boolean): void {
-    const keyActions: { [key: string]: () => void } = {
-      'ArrowUp': () => this.handleDirectionalTouch(isKeyDown ? Direction.UP : 'none'),
-      'ArrowDown': () => this.handleDirectionalTouch(isKeyDown ? Direction.DOWN : 'none'),
-      'ArrowLeft': () => this.handleDirectionalTouch(isKeyDown ? Direction.LEFT : 'none'),
-      'ArrowRight': () => this.handleDirectionalTouch(isKeyDown ? Direction.RIGHT : 'none'),
-      ' ': () => isKeyDown && this.handleFireTouch()
-    };
-
-    const action = keyActions[key];
-    if (action) {
-      action();
-    }
   }
 
   private render(gameState: GameState): void {

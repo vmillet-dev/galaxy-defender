@@ -1,86 +1,72 @@
 import { Injectable } from '@angular/core';
-import { fromEvent, merge, Observable } from 'rxjs';
-import { map, tap } from 'rxjs/operators';
+import { fromEvent, merge, Observable, interval } from 'rxjs';
+import { map, tap, switchMap, startWith } from 'rxjs/operators';
 
 @Injectable({
   providedIn: 'root'
 })
 export class InputService {
   private readonly MOVEMENT_SPEED = 5;
-  private touchStartX = 0;
-  private touchStartY = 0;
+  private activeKeys = new Set<string>();
+  private joystickMovement = { dx: 0, dy: 0 };
 
   constructor() {}
 
   setupInputHandlers(gameContainer: HTMLElement): Observable<{ dx: number; dy: number }> {
-    // Keyboard controls
-    const keyboardInput = merge(
-      fromEvent<KeyboardEvent>(window, 'keydown'),
-      fromEvent<KeyboardEvent>(window, 'keyup')
-    ).pipe(
-      map(event => {
-        const movement = { dx: 0, dy: 0 };
-        const speed = this.MOVEMENT_SPEED;
-        const isKeyDown = event.type === 'keydown';
-
-        switch (event.key) {
-          case 'ArrowLeft':
-          case 'a':
-            movement.dx = isKeyDown ? -speed : 0;
-            break;
-          case 'ArrowRight':
-          case 'd':
-            movement.dx = isKeyDown ? speed : 0;
-            break;
-          case 'ArrowUp':
-          case 'w':
-            movement.dy = isKeyDown ? -speed : 0;
-            break;
-          case 'ArrowDown':
-          case 's':
-            movement.dy = isKeyDown ? speed : 0;
-            break;
-        }
-
-        return movement;
-      })
-    );
-
-    // Touch controls
-    const touchStart = fromEvent<TouchEvent>(gameContainer, 'touchstart').pipe(
+    // Track key states
+    const keyDown = fromEvent<KeyboardEvent>(window, 'keydown').pipe(
       tap(event => {
-        event.preventDefault();
-        this.touchStartX = event.touches[0].clientX;
-        this.touchStartY = event.touches[0].clientY;
-      }),
-      map(() => ({ dx: 0, dy: 0 }))
-    );
-
-    const touchMove = fromEvent<TouchEvent>(gameContainer, 'touchmove').pipe(
-      tap(event => event.preventDefault()),
-      map(event => {
-        const touchX = event.touches[0].clientX;
-        const touchY = event.touches[0].clientY;
-        const dx = (touchX - this.touchStartX) / 20; // Adjust sensitivity
-        const dy = (touchY - this.touchStartY) / 20;
-
-        this.touchStartX = touchX;
-        this.touchStartY = touchY;
-
-        return {
-          dx: Math.abs(dx) > 0.1 ? dx : 0,
-          dy: Math.abs(dy) > 0.1 ? dy : 0
-        };
+        this.activeKeys.add(event.key);
       })
     );
 
-    const touchEnd = fromEvent<TouchEvent>(gameContainer, 'touchend').pipe(
-      tap(event => event.preventDefault()),
-      map(() => ({ dx: 0, dy: 0 }))
+    const keyUp = fromEvent<KeyboardEvent>(window, 'keyup').pipe(
+      tap(event => {
+        this.activeKeys.delete(event.key);
+      })
     );
 
-    // Merge all input streams
-    return merge(keyboardInput, touchStart, touchMove, touchEnd);
+    // Continuous movement stream for keyboard
+    const keyboardInput = merge(keyDown, keyUp).pipe(
+      startWith(null),
+      switchMap(() => interval(16).pipe( // ~60fps update rate
+        map(() => {
+          const movement = { dx: 0, dy: 0 };
+          const speed = this.MOVEMENT_SPEED;
+
+          if (this.activeKeys.has('ArrowLeft') || this.activeKeys.has('a')) {
+            movement.dx -= speed;
+          }
+          if (this.activeKeys.has('ArrowRight') || this.activeKeys.has('d')) {
+            movement.dx += speed;
+          }
+          if (this.activeKeys.has('ArrowUp') || this.activeKeys.has('w')) {
+            movement.dy -= speed;
+          }
+          if (this.activeKeys.has('ArrowDown') || this.activeKeys.has('s')) {
+            movement.dy += speed;
+          }
+
+          return movement;
+        })
+      ))
+    );
+
+    // Joystick movement stream
+    const joystickInput = interval(16).pipe(
+      map(() => ({
+        dx: this.joystickMovement.dx * this.MOVEMENT_SPEED,
+        dy: this.joystickMovement.dy * this.MOVEMENT_SPEED
+      }))
+    );
+
+    // Merge keyboard and joystick inputs
+    return merge(keyboardInput, joystickInput);
+  }
+
+  // Method to update joystick movement from VirtualJoystickComponent
+  updateJoystickMovement(movement: { dx: number; dy: number }): void {
+    this.joystickMovement = movement;
   }
 
   setupFireHandler(gameContainer: HTMLElement): Observable<void> {
