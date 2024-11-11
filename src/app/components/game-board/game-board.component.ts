@@ -3,7 +3,8 @@ import { CommonModule } from '@angular/common';
 import { GameService } from '../../services/game.service';
 import { InputService } from '../../services/input.service';
 import { Subscription } from 'rxjs';
-import { Enemy, PlayerShip, PowerUp, Projectile, GameState } from '../../models/game-entities';
+import { Enemy, PlayerShip, PowerUp, Projectile, GameState, VisualEffect } from '../../models/game-types';
+import { EnemyType, PowerUpType, VisualEffectType, WeaponType, Direction } from '../../models/game-types';
 
 @Component({
   selector: 'app-game-board',
@@ -13,25 +14,31 @@ import { Enemy, PlayerShip, PowerUp, Projectile, GameState } from '../../models/
   styleUrls: ['./game-board.component.scss']
 })
 export class GameBoardComponent implements OnInit, OnDestroy {
-  @ViewChild('gameCanvas', { static: true }) canvasRef!: ElementRef<HTMLCanvasElement>;
+  Direction = Direction; // Expose Direction enum to template
+  @ViewChild('gameCanvas', { static: true }) private canvas!: ElementRef<HTMLCanvasElement>;
   private ctx!: CanvasRenderingContext2D;
   private gameStateSubscription?: Subscription;
   private animationFrameId?: number;
 
-  // Make these public for template access
-  public readonly CANVAS_WIDTH = 800;
-  public readonly CANVAS_HEIGHT = 600;
-  public canvasWidth = this.CANVAS_WIDTH;
-  public canvasHeight = this.CANVAS_HEIGHT;
+  // Public properties for canvas dimensions
+  public canvasWidth: number = window.innerWidth;
+  public canvasHeight: number = window.innerHeight - 100; // Subtract toolbar height
   public isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
   constructor(
     private gameService: GameService,
     private inputService: InputService
-  ) {}
+  ) {
+    // Listen for window resize
+    window.addEventListener('resize', () => {
+      this.canvasWidth = window.innerWidth;
+      this.canvasHeight = window.innerHeight - 100;
+      this.setupCanvas();
+    });
+  }
 
   ngOnInit(): void {
-    const canvas = this.canvasRef.nativeElement;
+    const canvas = this.canvas.nativeElement;
     this.ctx = canvas.getContext('2d')!;
     this.setupCanvas();
     this.startGame();
@@ -48,29 +55,40 @@ export class GameBoardComponent implements OnInit, OnDestroy {
   }
 
   private setupCanvas(): void {
-    const canvas = this.canvasRef.nativeElement;
-    canvas.width = this.CANVAS_WIDTH;
-    canvas.height = this.CANVAS_HEIGHT;
+    const canvas = this.canvas.nativeElement;
+    this.ctx = canvas.getContext('2d')!;
 
+    // Enable image smoothing for better visual quality
+    this.ctx.imageSmoothingEnabled = true;
+    this.ctx.imageSmoothingQuality = 'high';
+
+    // Set initial canvas size
     const resizeCanvas = () => {
-      const container = canvas.parentElement!;
-      const containerWidth = container.clientWidth;
-      const containerHeight = container.clientHeight;
-      const scale = Math.min(
-        containerWidth / this.CANVAS_WIDTH,
-        containerHeight / this.CANVAS_HEIGHT
-      );
+      const container = canvas.parentElement;
+      if (!container) return;
 
-      canvas.style.width = `${this.CANVAS_WIDTH * scale}px`;
-      canvas.style.height = `${this.CANVAS_HEIGHT * scale}px`;
+      // Calculate scale based on device pixel ratio
+      const scale = window.devicePixelRatio || 1;
 
-      // Update canvas dimensions for template binding
-      this.canvasWidth = this.CANVAS_WIDTH;
-      this.canvasHeight = this.CANVAS_HEIGHT;
+      // Set display size
+      canvas.style.width = '100%';
+      canvas.style.height = '100%';
+
+      // Set actual size in memory
+      canvas.width = container.clientWidth * scale;
+      canvas.height = container.clientHeight * scale;
+
+      // Scale context to match device pixel ratio
+      this.ctx.scale(scale, scale);
+
+      // Store canvas dimensions for game calculations
+      this.canvasWidth = container.clientWidth;
+      this.canvasHeight = container.clientHeight;
     };
 
-    window.addEventListener('resize', resizeCanvas);
+    // Initial resize and add listener
     resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
   }
 
   // Make startGame public for template access
@@ -91,12 +109,11 @@ export class GameBoardComponent implements OnInit, OnDestroy {
     });
   }
 
-  // Add touch control methods for template
-  public handleDirectionalTouch(direction: 'up' | 'down' | 'left' | 'right' | 'none'): void {
+  public handleDirectionalTouch(direction: Direction | 'none'): void {
     if (direction === 'none') {
       this.gameService.stopPlayerMovement();
     } else {
-      this.gameService.movePlayer(direction);
+      this.gameService.movePlayer(direction as Direction);
     }
   }
 
@@ -106,10 +123,10 @@ export class GameBoardComponent implements OnInit, OnDestroy {
 
   private handleKeyboardInput(key: string, isKeyDown: boolean): void {
     const keyActions: { [key: string]: () => void } = {
-      'ArrowUp': () => this.handleDirectionalTouch(isKeyDown ? 'up' : 'none'),
-      'ArrowDown': () => this.handleDirectionalTouch(isKeyDown ? 'down' : 'none'),
-      'ArrowLeft': () => this.handleDirectionalTouch(isKeyDown ? 'left' : 'none'),
-      'ArrowRight': () => this.handleDirectionalTouch(isKeyDown ? 'right' : 'none'),
+      'ArrowUp': () => this.handleDirectionalTouch(isKeyDown ? Direction.UP : 'none'),
+      'ArrowDown': () => this.handleDirectionalTouch(isKeyDown ? Direction.DOWN : 'none'),
+      'ArrowLeft': () => this.handleDirectionalTouch(isKeyDown ? Direction.LEFT : 'none'),
+      'ArrowRight': () => this.handleDirectionalTouch(isKeyDown ? Direction.RIGHT : 'none'),
       ' ': () => isKeyDown && this.handleFireTouch()
     };
 
@@ -120,19 +137,41 @@ export class GameBoardComponent implements OnInit, OnDestroy {
   }
 
   private render(gameState: GameState): void {
-    this.ctx.clearRect(0, 0, this.CANVAS_WIDTH, this.CANVAS_HEIGHT);
+    if (!this.ctx) return;
 
-    // Render player
-    this.renderPlayer(gameState.player);
+    // Clear canvas with a dark background
+    this.ctx.fillStyle = '#000000';
+    this.ctx.fillRect(0, 0, this.canvasWidth, this.canvasHeight);
 
-    // Render enemies
-    gameState.enemies.forEach((enemy: Enemy) => this.renderEnemy(enemy));
+    // Add a subtle grid effect
+    this.ctx.strokeStyle = '#1a1a1a';
+    this.ctx.lineWidth = 1;
+    const gridSize = 50;
+    for (let x = 0; x < this.canvasWidth; x += gridSize) {
+      this.ctx.beginPath();
+      this.ctx.moveTo(x, 0);
+      this.ctx.lineTo(x, this.canvasHeight);
+      this.ctx.stroke();
+    }
+    for (let y = 0; y < this.canvasHeight; y += gridSize) {
+      this.ctx.beginPath();
+      this.ctx.moveTo(0, y);
+      this.ctx.lineTo(this.canvasWidth, y);
+      this.ctx.stroke();
+    }
 
-    // Render projectiles
-    gameState.projectiles.forEach((projectile: Projectile) => this.renderProjectile(projectile));
+    // Render game entities
+    if (gameState.player) {
+      this.renderPlayer(gameState.player);
+    }
 
-    // Render power-ups
-    gameState.powerUps.forEach((powerUp: PowerUp) => this.renderPowerUp(powerUp));
+    gameState.enemies.forEach(enemy => {
+      this.renderEnemy(enemy);
+    });
+
+    gameState.projectiles.forEach(projectile => this.renderProjectile(projectile));
+    gameState.powerUps.forEach(powerUp => this.renderPowerUp(powerUp));
+    gameState.visualEffects.forEach((effect: VisualEffect) => this.renderVisualEffect(effect));
   }
 
   private renderPlayer(player: PlayerShip): void {
@@ -146,13 +185,89 @@ export class GameBoardComponent implements OnInit, OnDestroy {
   }
 
   private renderEnemy(enemy: Enemy): void {
-    this.ctx.fillStyle = '#F44336';
-    this.ctx.fillRect(
-      enemy.position.x,
-      enemy.position.y,
-      enemy.width,
-      enemy.height
-    );
+    const ctx = this.ctx;
+    if (!ctx) return;
+
+    ctx.save();
+    ctx.translate(enemy.position.x, enemy.position.y);
+
+    // Different shapes and colors for each enemy type
+    switch (enemy.type) {
+      case EnemyType.BASIC:
+        ctx.beginPath();
+        ctx.moveTo(0, -enemy.height / 2);
+        ctx.lineTo(-enemy.width / 2, enemy.height / 2);
+        ctx.lineTo(enemy.width / 2, enemy.height / 2);
+        ctx.closePath();
+        ctx.fillStyle = '#00ff00'; // Green
+        break;
+      case EnemyType.FAST:
+        ctx.beginPath();
+        ctx.moveTo(0, -enemy.height / 2);
+        ctx.lineTo(enemy.width / 2, 0);
+        ctx.lineTo(0, enemy.height / 2);
+        ctx.lineTo(-enemy.width / 2, 0);
+        ctx.closePath();
+        ctx.fillStyle = '#00ffff'; // Cyan
+        break;
+      case EnemyType.TANK:
+        ctx.beginPath();
+        ctx.moveTo(-enemy.width / 2, 0);
+        ctx.lineTo(-enemy.width / 4, -enemy.height / 2);
+        ctx.lineTo(enemy.width / 4, -enemy.height / 2);
+        ctx.lineTo(enemy.width / 2, 0);
+        ctx.lineTo(enemy.width / 4, enemy.height / 2);
+        ctx.lineTo(-enemy.width / 4, enemy.height / 2);
+        ctx.closePath();
+        ctx.fillStyle = '#ffa500'; // Orange
+        break;
+      case EnemyType.ELITE:
+        ctx.beginPath();
+        for (let i = 0; i < 8; i++) {
+          const angle = (i * Math.PI * 2) / 8;
+          const radius = i % 2 === 0 ? enemy.width / 2 : enemy.width / 4;
+          ctx.lineTo(
+            Math.cos(angle) * radius,
+            Math.sin(angle) * radius
+          );
+        }
+        ctx.closePath();
+        ctx.fillStyle = '#ff00ff'; // Magenta
+        break;
+      case EnemyType.BOSS:
+        // Draw main body
+        ctx.beginPath();
+        ctx.arc(0, 0, enemy.width / 2, 0, Math.PI * 2);
+        ctx.fillStyle = '#ff0000'; // Red
+        ctx.fill();
+
+        // Draw "wings"
+        ctx.beginPath();
+        ctx.moveTo(-enemy.width / 2, 0);
+        ctx.lineTo(-enemy.width, -enemy.height / 3);
+        ctx.lineTo(-enemy.width, enemy.height / 3);
+        ctx.closePath();
+        ctx.moveTo(enemy.width / 2, 0);
+        ctx.lineTo(enemy.width, -enemy.height / 3);
+        ctx.lineTo(enemy.width, enemy.height / 3);
+        ctx.closePath();
+        ctx.fillStyle = '#800000'; // Dark red
+        break;
+    }
+
+    ctx.fill();
+
+    // Health bar
+    const healthBarWidth = enemy.width;
+    const healthBarHeight = 4;
+    const healthPercentage = enemy.health / enemy.maxHealth;
+
+    ctx.fillStyle = '#ff0000';
+    ctx.fillRect(-healthBarWidth / 2, -enemy.height / 2 - 10, healthBarWidth, healthBarHeight);
+    ctx.fillStyle = '#00ff00';
+    ctx.fillRect(-healthBarWidth / 2, -enemy.height / 2 - 10, healthBarWidth * healthPercentage, healthBarHeight);
+
+    ctx.restore();
   }
 
   private renderProjectile(projectile: Projectile): void {
@@ -166,18 +281,90 @@ export class GameBoardComponent implements OnInit, OnDestroy {
   }
 
   private renderPowerUp(powerUp: PowerUp): void {
-    const colors = {
-      health: '#4CAF50',
-      weapon: '#9C27B0',
-      shield: '#00BCD4'
+    const colors: Record<PowerUpType, string> = {
+      [PowerUpType.HEALTH]: '#4CAF50',
+      [PowerUpType.WEAPON]: '#2196F3',
+      [PowerUpType.SHIELD]: '#9C27B0',
+      [PowerUpType.SPEED]: '#FF9800'
     };
 
+    this.ctx.save();
     this.ctx.fillStyle = colors[powerUp.type];
-    this.ctx.fillRect(
-      powerUp.position.x,
-      powerUp.position.y,
-      powerUp.width,
-      powerUp.height
+    this.ctx.strokeStyle = '#FFFFFF';
+    this.ctx.lineWidth = 2;
+
+    // Draw power-up as a pulsing circle
+    const pulseScale = 1 + Math.sin(Date.now() * 0.005) * 0.2;
+    const size = powerUp.width * pulseScale;
+
+    this.ctx.beginPath();
+    this.ctx.arc(
+      powerUp.position.x + powerUp.width / 2,
+      powerUp.position.y + powerUp.height / 2,
+      size / 2,
+      0,
+      Math.PI * 2
     );
+    this.ctx.fill();
+    this.ctx.stroke();
+    this.ctx.restore();
+  }
+
+  private renderVisualEffect(effect: VisualEffect): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+
+    ctx.save();
+    ctx.globalAlpha = effect.opacity;
+
+    const elapsedTime = Date.now() - (effect.startTime || Date.now());
+    const progress = Math.min(elapsedTime / effect.duration, 1);
+
+    switch (effect.type) {
+      case VisualEffectType.EXPLOSION:
+        ctx.beginPath();
+        ctx.arc(effect.position.x, effect.position.y, effect.scale * 20, 0, Math.PI * 2);
+        ctx.fillStyle = effect.color;
+        ctx.fill();
+        break;
+      case VisualEffectType.POWERUP:
+        ctx.beginPath();
+        ctx.arc(effect.position.x, effect.position.y, effect.scale * 10, 0, Math.PI * 2);
+        ctx.fillStyle = effect.color;
+        ctx.fill();
+        break;
+      case VisualEffectType.HIT:
+        ctx.beginPath();
+        ctx.arc(effect.position.x, effect.position.y, effect.scale * 5, 0, Math.PI * 2);
+        ctx.fillStyle = effect.color;
+        ctx.fill();
+        break;
+      case VisualEffectType.SPAWN:
+        const rippleSize = effect.scale * 15 * (1 + progress);
+        ctx.beginPath();
+        ctx.arc(effect.position.x, effect.position.y, rippleSize, 0, Math.PI * 2);
+        ctx.strokeStyle = effect.color;
+        ctx.lineWidth = 2 * (1 - progress);
+        ctx.stroke();
+        break;
+      case VisualEffectType.WAVE_COMPLETE:
+        const ringSize = effect.scale * 30 * progress;
+        ctx.beginPath();
+        ctx.arc(effect.position.x, effect.position.y, ringSize, 0, Math.PI * 2);
+        ctx.strokeStyle = effect.color;
+        ctx.lineWidth = 4 * (1 - progress * 0.5);
+        ctx.stroke();
+
+        ctx.fillStyle = effect.color;
+        ctx.font = `${Math.floor(effect.scale * 20)}px Arial`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('WAVE COMPLETE!', effect.position.x, effect.position.y);
+        break;
+    }
+
+    effect.opacity = 1 - progress;
+
+    ctx.restore();
   }
 }
