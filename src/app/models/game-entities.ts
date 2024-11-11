@@ -1,3 +1,5 @@
+import { Direction, EnemyType, MovementPattern, PowerUpType, VisualEffectType, WeaponType } from './game-types';
+
 export interface Position {
   x: number;
   y: number;
@@ -8,47 +10,69 @@ export interface Velocity {
   dy: number;
 }
 
+export interface VisualEffect {
+  type: VisualEffectType;
+  duration: number;
+  color: string;
+  opacity: number;
+  position: Position;
+  velocity?: Velocity;
+  scale: number;
+  startTime?: number;
+}
+
 export interface GameObject {
   position: Position;
   velocity: Velocity;
   width: number;
   height: number;
+  color: string;
   isActive: boolean;
+  visualEffects?: VisualEffect[];
+}
+
+export interface Enemy extends GameObject {
+  type: EnemyType;
+  health: number;
+  maxHealth: number;
+  speed: number;
+  points: number;
+  dropChance: number;
+  spawnDelay: number;
+  movementPattern: MovementPattern;
+  lastTeleportTime?: number;
+}
+
+export interface PowerUp extends GameObject {
+  type: PowerUpType;
+  value: number;
+  duration: number;
 }
 
 export interface PlayerShip extends GameObject {
   health: number;
   maxHealth: number;
   weaponLevel: number;
-  weaponType: 'laser' | 'missile';
+  weaponType: WeaponType;
+  speedBoost: number;
+  speedBoostDuration?: number;
   shieldActive: boolean;
-  shieldDuration?: number;
-}
-
-export interface Enemy extends GameObject {
-  type: 'basic' | 'fast' | 'tank';
-  health: number;
-  points: number;
-  dropChance: number;
-  movementPattern: 'linear' | 'zigzag' | 'swooping';
 }
 
 export interface Projectile extends GameObject {
   damage: number;
+  speed: number;
   type: 'player' | 'enemy';
-}
-
-export interface PowerUp extends GameObject {
-  type: 'health' | 'weapon' | 'shield';
-  value: number;
 }
 
 export interface Wave {
   number: number;
   enemyTypes: Array<{
-    type: Enemy['type'];
+    type: EnemyType;
     count: number;
     spawnDelay: number;
+    lastSpawnTime?: number;
+    totalSpawned: number;
   }>;
   completed: boolean;
 }
@@ -58,8 +82,10 @@ export interface GameState {
   enemies: Enemy[];
   projectiles: Projectile[];
   powerUps: PowerUp[];
-  currentWave: Wave;
+  visualEffects: VisualEffect[];
   score: number;
-  isGameOver: boolean;
+  wave: number;
+  gameOver: boolean;
   isPaused: boolean;
+  currentWave: Wave;
 }

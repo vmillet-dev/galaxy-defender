@@ -1,349 +1,389 @@
-import { Injectable } from '@angular/core';
-import { BehaviorSubject, interval, Subject } from 'rxjs';
-import { takeWhile } from 'rxjs/operators';
-import {
-  GameState, PlayerShip, Enemy, Projectile, PowerUp, Wave,
-  Position, Velocity, GameObject
-} from '../models/game-entities';
+import { Injectable, OnDestroy } from '@angular/core';
+import { BehaviorSubject, interval, Subscription } from 'rxjs';
+import { Direction, EnemyType, MovementPattern, PowerUpType, VisualEffectType, WeaponType } from '../models/game-types';
+import { Enemy, GameState, PlayerShip, Position, PowerUp, Projectile, VisualEffect, GameObject } from '../models/game-entities';
 
 @Injectable({
   providedIn: 'root'
 })
-export class GameService {
-  private readonly GAME_TICK = 16; // ~60 FPS
-  private readonly CANVAS_WIDTH = 800;
-  private readonly CANVAS_HEIGHT = 600;
-  private readonly PLAYER_SPEED = 5;
-
-  private gameState = new BehaviorSubject<GameState>({
-    player: this.createPlayer(),
-    enemies: [],
-    projectiles: [],
-    powerUps: [],
-    currentWave: this.createWave(1),
-    score: 0,
-    isGameOver: false,
-    isPaused: false
-  });
-
-  gameState$ = this.gameState.asObservable();
-  gameOver$ = new Subject<void>();
-
-  constructor() {}
-
-  private createPlayer(): PlayerShip {
-    return {
-      position: { x: this.CANVAS_WIDTH / 2, y: this.CANVAS_HEIGHT - 50 },
+export class GameService implements OnDestroy {
+  public gameState$ = new BehaviorSubject<GameState>({
+    player: {
+      position: { x: window.innerWidth / 2, y: window.innerHeight - 100 },
       velocity: { dx: 0, dy: 0 },
       width: 40,
       height: 40,
+      color: '#00ff00',
+      isActive: true,
       health: 100,
       maxHealth: 100,
       weaponLevel: 1,
-      weaponType: 'laser',
+      weaponType: WeaponType.LASER,
       shieldActive: false,
-      shieldDuration: 0,
-      isActive: true
-    };
-  }
-
-  private createWave(waveNumber: number): Wave {
-    return {
-      number: waveNumber,
-      enemyTypes: [
-        {
-          type: 'basic',
-          count: Math.floor(3 + waveNumber * 1.5),
-          spawnDelay: 1000
-        },
-        {
-          type: 'fast',
-          count: Math.floor(waveNumber / 2),
-          spawnDelay: 1500
-        },
-        {
-          type: 'tank',
-          count: Math.floor(waveNumber / 3),
-          spawnDelay: 2000
-        }
-      ],
+      speedBoost: 1
+    } as PlayerShip,
+    enemies: [],
+    projectiles: [],
+    powerUps: [],
+    visualEffects: [],
+    score: 0,
+    wave: 1,
+    gameOver: false,
+    isPaused: false,
+    currentWave: {
+      number: 1,
+      enemyTypes: [],
       completed: false
+    }
+  });
+
+  private gameLoopSubscription: Subscription | null = null;
+  private canvasWidth: number = window.innerWidth;
+  private canvasHeight: number = window.innerHeight;
+
+  constructor() {
+    window.addEventListener('resize', () => this.updateCanvasDimensions());
+    this.updateCanvasDimensions();
+  }
+
+  private updateCanvasDimensions(): void {
+    const canvas = document.querySelector('canvas');
+    if (canvas) {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      this.canvasWidth = window.innerWidth;
+      this.canvasHeight = window.innerHeight;
+    }
+  }
+
+  private createEnemy(type: EnemyType, position: Position): Enemy {
+    const enemyTypes = {
+      [EnemyType.BASIC]: {
+        width: 20,
+        height: 40,
+        health: 100,
+        speed: 2,
+        color: '#00ff00',
+        points: 10,
+        dropChance: 0.2,
+        spawnDelay: 1000
+      },
+      [EnemyType.FAST]: {
+        width: 15,
+        height: 30,
+        health: 75,
+        speed: 4,
+        color: '#00ffff',
+        points: 20,
+        dropChance: 0.3,
+        spawnDelay: 800
+      },
+      [EnemyType.TANK]: {
+        width: 30,
+        height: 45,
+        health: 200,
+        speed: 1,
+        color: '#ff9900',
+        points: 30,
+        dropChance: 0.4,
+        spawnDelay: 1500
+      },
+      [EnemyType.ELITE]: {
+        width: 25,
+        height: 50,
+        health: 150,
+        speed: 3,
+        color: '#ff00ff',
+        points: 40,
+        dropChance: 0.6,
+        spawnDelay: 2000
+      },
+      [EnemyType.BOSS]: {
+        width: 60,
+        height: 80,
+        health: 500,
+        speed: 1.5,
+        color: '#ff0000',
+        points: 100,
+        dropChance: 1.0,
+        spawnDelay: 5000
+      }
+    };
+
+    const config = enemyTypes[type];
+    return {
+      type,
+      position,
+      velocity: { dx: 0, dy: 0 },
+      width: config.width,
+      height: config.height,
+      health: config.health,
+      maxHealth: config.health,
+      speed: config.speed,
+      color: config.color,
+      points: config.points,
+      dropChance: config.dropChance,
+      isActive: true,
+      movementPattern: this.getMovementPattern(type),
+      spawnDelay: config.spawnDelay
     };
   }
 
-  private createEnemy(type: Enemy['type'], position: Position): Enemy {
-    const enemyTypes = {
-      basic: { health: 20, points: 100, speed: 2, dropChance: 0.2 },
-      fast: { health: 10, points: 150, speed: 4, dropChance: 0.3 },
-      tank: { health: 40, points: 200, speed: 1, dropChance: 0.4 }
-    };
-
-    const enemyType = enemyTypes[type];
-    return {
-      position,
-      velocity: { dx: 0, dy: enemyType.speed },
-      width: 30,
-      height: 30,
-      type,
-      health: enemyType.health,
-      points: enemyType.points,
-      dropChance: enemyType.dropChance,
-      movementPattern: Math.random() < 0.3 ? 'zigzag' : 'linear',
-      isActive: true
-    };
+  private getMovementPattern(type: EnemyType): MovementPattern {
+    switch (type) {
+      case EnemyType.BASIC:
+        return MovementPattern.LINEAR;
+      case EnemyType.FAST:
+        return MovementPattern.SINE;
+      case EnemyType.TANK:
+        return MovementPattern.LINEAR;
+      case EnemyType.ELITE:
+        return MovementPattern.SWOOP;
+      case EnemyType.BOSS:
+        return MovementPattern.TRACKING;
+      default:
+        return MovementPattern.LINEAR;
+    }
   }
 
   startGame(): void {
-    const initialState = this.gameState.value;
-    this.gameState.next({
-      ...initialState,
-      player: this.createPlayer(),
-      enemies: [],
-      projectiles: [],
-      powerUps: [],
-      currentWave: this.createWave(1),
-      score: 0,
-      isGameOver: false,
-      isPaused: false
-    });
-
+    this.updateCanvasDimensions();
+    const state = this.gameState$.value;
+    state.gameOver = false;
+    state.isPaused = false;
+    state.score = 0;
+    state.wave = 1;
+    state.enemies = [];
+    state.projectiles = [];
+    state.powerUps = [];
+    state.visualEffects = [];
+    this.gameState$.next(state);
     this.startGameLoop();
   }
 
-  private startGameLoop(): void {
-    interval(this.GAME_TICK)
-      .pipe(takeWhile(() => !this.gameState.value.isGameOver))
-      .subscribe(() => {
-        if (!this.gameState.value.isPaused) {
-          this.updateGame();
-        }
-      });
+  startGameLoop(): void {
+    if (this.gameLoopSubscription) {
+      this.gameLoopSubscription.unsubscribe();
+    }
+
+    this.gameLoopSubscription = interval(16).subscribe(() => {
+      const state = this.gameState$.value;
+      if (!state.gameOver && !state.isPaused) {
+        this.updateGame();
+      }
+    });
   }
 
   private updateGame(): void {
-    const currentState = this.gameState.value;
-    this.updatePositions(currentState);
-    this.checkCollisions(currentState);
-    this.spawnEnemies(currentState);
-    this.updateWaveStatus(currentState);
-    this.gameState.next(currentState);
+    const state = this.gameState$.value;
+    this.updatePositions();
+    this.spawnEnemies();
+    this.checkCollisions(state);
+    this.updateWaveStatus();
   }
+  private updatePositions(): void {
+    const state = this.gameState$.value;
 
-  private updatePositions(state: GameState): void {
-    // Update player position
-    state.player.position.x += state.player.velocity.dx;
-    state.player.position.y += state.player.velocity.dy;
+    state.enemies.forEach(enemy => this.updateEnemyPosition(enemy));
 
-    // Keep player in bounds
-    state.player.position.x = Math.max(0, Math.min(state.player.position.x, this.CANVAS_WIDTH - state.player.width));
-    state.player.position.y = Math.max(0, Math.min(state.player.position.y, this.CANVAS_HEIGHT - state.player.height));
-
-    // Update enemies
-    state.enemies.forEach(enemy => {
-      this.updateEnemyPosition(enemy);
-    });
-
-    // Update projectiles
-    state.projectiles = state.projectiles.filter(projectile => {
+    state.projectiles.forEach(projectile => {
       projectile.position.x += projectile.velocity.dx;
       projectile.position.y += projectile.velocity.dy;
-      return this.isInBounds(projectile.position);
     });
 
-    // Update power-ups
-    state.powerUps = state.powerUps.filter(powerUp => {
-      powerUp.position.y += powerUp.velocity.dy;
-      return this.isInBounds(powerUp.position);
+    state.powerUps.forEach(powerUp => {
+      powerUp.position.y += 1; // Power-ups fall slowly
     });
+
+    state.visualEffects = state.visualEffects.filter(effect => {
+      effect.opacity -= 0.02;
+      effect.scale += 0.05;
+      return effect.opacity > 0;
+    });
+
+    this.gameState$.next(state);
   }
 
   private updateEnemyPosition(enemy: Enemy): void {
-    const baseSpeed = enemy.velocity.dy;
-    const time = Date.now() / 1000;
+    const state = this.gameState$.value;
+    const baseSpeed = enemy.speed || 2;
 
     switch (enemy.movementPattern) {
-      case 'zigzag':
-        enemy.velocity.dx = Math.sin(time) * 2;
+      case MovementPattern.SINE:
+        enemy.position.x += Math.sin(Date.now() / 500) * 2;
+        enemy.position.y += baseSpeed;
         break;
-      case 'swooping':
-        enemy.velocity.dx = Math.cos(time) * 3;
-        enemy.velocity.dy = baseSpeed + Math.sin(time) * 2;
+      case MovementPattern.TRACKING:
+        const dx = state.player.position.x - enemy.position.x;
+        const dy = state.player.position.y - enemy.position.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        if (distance > 0) {
+          enemy.position.x += (dx / distance) * baseSpeed;
+          enemy.position.y += (dy / distance) * baseSpeed;
+        }
         break;
+      case MovementPattern.SWOOP:
+        const time = Date.now() / 1000;
+        enemy.position.x += Math.sin(time) * 4;
+        enemy.position.y += Math.cos(time) * 2 + baseSpeed;
+        break;
+      case MovementPattern.LINEAR:
       default:
-        enemy.velocity.dx = 0;
+        enemy.position.y += baseSpeed;
+        break;
     }
 
-    enemy.position.x += enemy.velocity.dx;
-    enemy.position.y += enemy.velocity.dy;
-
-    // Keep enemy in bounds horizontally
-    enemy.position.x = Math.max(0, Math.min(enemy.position.x, this.CANVAS_WIDTH - enemy.width));
+    enemy.position.x = Math.max(-100, Math.min(enemy.position.x, this.canvasWidth + 100));
+    enemy.position.y = Math.max(-100, Math.min(enemy.position.y, this.canvasHeight + 100));
   }
 
-  private isInBounds(position: Position): boolean {
-    return position.x >= 0 &&
-           position.x <= this.CANVAS_WIDTH &&
-           position.y >= 0 &&
-           position.y <= this.CANVAS_HEIGHT;
+  private createWave(): void {
+    const state = this.gameState$.value;
+    const waveNumber = state.wave;
+
+    // Define enemy types for the wave with guaranteed variety
+    const enemyTypes = [
+      { type: EnemyType.BASIC, count: Math.max(3, Math.floor(waveNumber * 1.5)), spawnDelay: 1000, totalSpawned: 0 },
+      { type: EnemyType.FAST, count: Math.max(1, Math.floor(waveNumber * 0.5)), spawnDelay: 800, totalSpawned: 0 }
+    ];
+
+    // Add TANK enemies from wave 2
+    if (waveNumber >= 2) {
+      enemyTypes.push({ type: EnemyType.TANK, count: Math.max(1, Math.floor(waveNumber * 0.3)), spawnDelay: 1500, totalSpawned: 0 });
+    }
+
+    // Add ELITE enemies from wave 3
+    if (waveNumber >= 3) {
+      enemyTypes.push({ type: EnemyType.ELITE, count: Math.max(1, Math.floor(waveNumber * 0.2)), spawnDelay: 2000, totalSpawned: 0 });
+    }
+
+    // Add BOSS every 5 waves
+    if (waveNumber % 5 === 0) {
+      enemyTypes.push({ type: EnemyType.BOSS, count: 1, spawnDelay: 5000, totalSpawned: 0 });
+    }
+
+    state.currentWave = {
+      number: waveNumber,
+      enemyTypes: enemyTypes,
+      completed: false
+    };
+
+    this.gameState$.next(state);
   }
 
   private checkCollisions(state: GameState): void {
-    // Player projectiles hitting enemies
-    state.projectiles
-      .filter(p => p.type === 'player' && p.isActive)
-      .forEach(projectile => {
-        state.enemies.forEach(enemy => {
-          if (enemy.isActive && this.detectCollision(projectile, enemy)) {
-            projectile.isActive = false;
-            enemy.health -= projectile.damage;
+    state.enemies.forEach(enemy => {
+      if (this.detectCollision(state.player, enemy)) {
+        state.player.health -= 10;
+        enemy.health = 0;
+        this.addVisualEffect(VisualEffectType.EXPLOSION, enemy.position);
+        if (state.player.health <= 0) {
+          state.gameOver = true;
+        }
+      }
+    });
 
-            if (enemy.health <= 0) {
-              enemy.isActive = false;
-              state.score += enemy.points;
-
-              if (Math.random() < enemy.dropChance) {
-                state.powerUps.push(this.createPowerUp(enemy.position));
-              }
-            }
-          }
-        });
-      });
-
-    // Enemy projectiles hitting player
-    state.projectiles
-      .filter(p => p.type === 'enemy' && p.isActive)
-      .forEach(projectile => {
-        if (this.detectCollision(projectile, state.player)) {
+    state.projectiles.forEach(projectile => {
+      state.enemies.forEach(enemy => {
+        if (this.detectCollision(projectile, enemy)) {
+          enemy.health -= 20;
           projectile.isActive = false;
-          if (!state.player.shieldActive) {
-            state.player.health -= projectile.damage;
+          this.addVisualEffect(VisualEffectType.HIT, enemy.position);
 
-            if (state.player.health <= 0) {
-              state.isGameOver = true;
-              this.gameOver$.next();
+          if (enemy.health <= 0) {
+            state.score += enemy.points;
+            if (Math.random() < enemy.dropChance) {
+              state.powerUps.push(this.createPowerUp(enemy.position));
             }
+            this.addVisualEffect(VisualEffectType.EXPLOSION, enemy.position);
           }
         }
       });
+    });
 
-    // Power-up collection
     state.powerUps.forEach(powerUp => {
-      if (powerUp.isActive && this.detectCollision(powerUp, state.player)) {
+      if (this.detectCollision(state.player, powerUp)) {
+        this.applyPowerUp(powerUp);
         powerUp.isActive = false;
-        this.applyPowerUp(state.player, powerUp);
+        this.addVisualEffect(VisualEffectType.POWERUP, powerUp.position);
       }
     });
 
-    // Clean up inactive entities
-    state.projectiles = state.projectiles.filter(p => p.isActive);
-    state.enemies = state.enemies.filter(e => e.isActive);
-    state.powerUps = state.powerUps.filter(p => p.isActive);
+    state.enemies = state.enemies.filter(enemy => enemy.health > 0);
+    state.projectiles = state.projectiles.filter(proj => proj.isActive && this.isInBounds(proj));
+    state.powerUps = state.powerUps.filter(powerUp => powerUp.isActive && this.isInBounds(powerUp));
   }
 
-  private spawnEnemies(state: GameState): void {
-    const wave = state.currentWave;
-    wave.enemyTypes.forEach(enemyType => {
-      if (enemyType.count > 0 && Date.now() % enemyType.spawnDelay === 0) {
-        const position = {
-          x: Math.random() * (this.CANVAS_WIDTH - 30),
-          y: -30
-        };
-        state.enemies.push(this.createEnemy(enemyType.type, position));
-        enemyType.count--;
+  private spawnEnemies(): void {
+    const state = this.gameState$.value;
+    if (!state.currentWave || state.currentWave.completed) {
+      return;
+    }
+
+    const currentTime = Date.now();
+    state.currentWave.enemyTypes.forEach(config => {
+      if (typeof config.totalSpawned === 'undefined') {
+        config.totalSpawned = 0;
+      }
+
+      const lastSpawnTime = config.lastSpawnTime || 0;
+      if (currentTime - lastSpawnTime >= config.spawnDelay) {
+        if (config.totalSpawned < config.count) {
+          let position = {
+            x: Math.random() * (this.canvasWidth - 60) + 30,
+            y: -50
+          };
+
+          switch (config.type) {
+            case EnemyType.FAST:
+              position = {
+                x: Math.random() < 0.5 ? -30 : this.canvasWidth + 30,
+                y: Math.random() * (this.canvasHeight - 100) + 50
+              };
+              break;
+            case EnemyType.TANK:
+              position = {
+                x: Math.random() * (this.canvasWidth - 100) + 50,
+                y: -80
+              };
+              break;
+            case EnemyType.ELITE:
+              const edge = Math.floor(Math.random() * 4);
+              switch (edge) {
+                case 0:
+                  position = { x: Math.random() * this.canvasWidth, y: -30 };
+                  break;
+                case 1:
+                  position = { x: this.canvasWidth + 30, y: Math.random() * this.canvasHeight };
+                  break;
+                case 2:
+                  position = { x: Math.random() * this.canvasWidth, y: this.canvasHeight + 30 };
+                  break;
+                case 3:
+                  position = { x: -30, y: Math.random() * this.canvasHeight };
+                  break;
+              }
+              break;
+            case EnemyType.BOSS:
+              position = {
+                x: this.canvasWidth / 2,
+                y: -100
+              };
+              break;
+          }
+
+          const enemy = this.createEnemy(config.type, position);
+          state.enemies.push(enemy);
+          config.lastSpawnTime = currentTime;
+          config.totalSpawned++;
+
+          console.log(`Spawning enemy: ${config.type} at position:`, position);
+          this.addVisualEffect(VisualEffectType.SPAWN, position);
+        }
       }
     });
 
-    if (wave.enemyTypes.every(et => et.count === 0) && state.enemies.length === 0) {
-      wave.completed = true;
-    }
-  }
-
-  private updateWaveStatus(state: GameState): void {
-    if (state.currentWave.completed) {
-      state.player.health = Math.min(
-        state.player.health + 25,
-        state.player.maxHealth
-      );
-      state.currentWave = this.createWave(state.currentWave.number + 1);
-    }
-  }
-
-  movePlayer(direction: 'up' | 'down' | 'left' | 'right'): void {
-    const state = this.gameState.value;
-    const velocity: Velocity = { dx: 0, dy: 0 };
-    const speed = 5;
-
-    switch (direction) {
-      case 'up':
-        velocity.dy = -speed;
-        break;
-      case 'down':
-        velocity.dy = speed;
-        break;
-      case 'left':
-        velocity.dx = -speed;
-        break;
-      case 'right':
-        velocity.dx = speed;
-        break;
-    }
-
-    state.player.velocity = velocity;
-    this.gameState.next(state);
-  }
-
-  stopPlayerMovement(): void {
-    const state = this.gameState.value;
-    state.player.velocity = { dx: 0, dy: 0 };
-    this.gameState.next(state);
-  }
-
-  fireWeapon(): void {
-    const state = this.gameState.value;
-    const player = state.player;
-
-    const baseProjectile: Projectile = {
-      position: {
-        x: player.position.x + player.width / 2 - 2,
-        y: player.position.y
-      },
-      velocity: { dx: 0, dy: -8 },
-      width: 4,
-      height: 12,
-      damage: 10,
-      type: 'player',
-      isActive: true
-    };
-
-    const projectiles: Projectile[] = [];
-
-    switch (player.weaponLevel) {
-      case 1:
-        projectiles.push({ ...baseProjectile });
-        break;
-      case 2:
-        projectiles.push(
-          { ...baseProjectile, position: { ...baseProjectile.position, x: baseProjectile.position.x - 8 } },
-          { ...baseProjectile, position: { ...baseProjectile.position, x: baseProjectile.position.x + 8 } }
-        );
-        break;
-      case 3:
-        projectiles.push(
-          { ...baseProjectile },
-          { ...baseProjectile, position: { ...baseProjectile.position, x: baseProjectile.position.x - 12 }, velocity: { dx: -2, dy: -8 } },
-          { ...baseProjectile, position: { ...baseProjectile.position, x: baseProjectile.position.x + 12 }, velocity: { dx: 2, dy: -8 } }
-        );
-        break;
-    }
-
-    state.projectiles.push(...projectiles);
-    this.gameState.next(state);
-  }
-
-  pauseGame(): void {
-    const state = this.gameState.value;
-    state.isPaused = !state.isPaused;
-    this.gameState.next(state);
+    this.gameState$.next(state);
   }
 
   private detectCollision(a: GameObject, b: GameObject): boolean {
@@ -355,42 +395,212 @@ export class GameService {
     );
   }
 
+  private isInBounds(obj: GameObject): boolean {
+    return (
+      obj.position.x >= -100 &&
+      obj.position.x <= this.canvasWidth + 100 &&
+      obj.position.y >= -100 &&
+      obj.position.y <= this.canvasHeight + 100
+    );
+  }
+
   private createPowerUp(position: Position): PowerUp {
-    const types: PowerUp['type'][] = ['health', 'weapon', 'shield'];
-    const type = types[Math.floor(Math.random() * types.length)];
-    const values = {
-      health: 25,
-      weapon: 1,
-      shield: 5000 // Shield duration in milliseconds
-    };
+    const powerUpTypes = [
+      { type: PowerUpType.HEALTH, color: '#ff4444', value: 30, duration: 0 },
+      { type: PowerUpType.SHIELD, color: '#4444ff', value: 1, duration: 10000 },
+      { type: PowerUpType.WEAPON, color: '#44ff44', value: 1, duration: 15000 },
+      { type: PowerUpType.SPEED, color: '#ffff44', value: 1.5, duration: 8000 }
+    ];
+
+    const powerUpConfig = powerUpTypes[Math.floor(Math.random() * powerUpTypes.length)];
 
     return {
+      type: powerUpConfig.type,
       position: { ...position },
-      velocity: { dx: 0, dy: 1 },
+      velocity: { dx: 0, dy: 0 },
       width: 20,
       height: 20,
-      type,
-      value: values[type],
+      color: powerUpConfig.color,
+      value: powerUpConfig.value,
+      duration: powerUpConfig.duration,
       isActive: true
     };
   }
 
-  private applyPowerUp(player: PlayerShip, powerUp: PowerUp): void {
+  private applyPowerUp(powerUp: PowerUp): void {
+    const state = this.gameState$.value;
+
     switch (powerUp.type) {
-      case 'health':
-        player.health = Math.min(player.health + powerUp.value, player.maxHealth);
+      case PowerUpType.HEALTH:
+        state.player.health = Math.min(state.player.health + powerUp.value, state.player.maxHealth);
         break;
-      case 'weapon':
-        player.weaponLevel = Math.min(player.weaponLevel + powerUp.value, 3);
-        break;
-      case 'shield':
-        player.shieldActive = true;
+      case PowerUpType.SHIELD:
+        state.player.shieldActive = true;
         setTimeout(() => {
-          const currentState = this.gameState.value;
+          const currentState = this.gameState$.value;
           currentState.player.shieldActive = false;
-          this.gameState.next(currentState);
-        }, powerUp.value);
+          this.gameState$.next(currentState);
+        }, powerUp.duration);
         break;
+      case PowerUpType.WEAPON:
+        state.player.weaponLevel = Math.min(state.player.weaponLevel + 1, 3);
+        setTimeout(() => {
+          const currentState = this.gameState$.value;
+          currentState.player.weaponLevel = Math.max(1, currentState.player.weaponLevel - 1);
+          this.gameState$.next(currentState);
+        }, powerUp.duration);
+        break;
+      case PowerUpType.SPEED:
+        state.player.speedBoost = powerUp.value;
+        setTimeout(() => {
+          const currentState = this.gameState$.value;
+          currentState.player.speedBoost = 1;
+          this.gameState$.next(currentState);
+        }, powerUp.duration);
+        break;
+    }
+
+    this.addVisualEffect(VisualEffectType.POWERUP, powerUp.position);
+  }
+
+  private addVisualEffect(type: VisualEffectType, position: Position): void {
+    const effect: VisualEffect = {
+      type,
+      position: { ...position },
+      startTime: Date.now(),
+      duration: type === VisualEffectType.WAVE_COMPLETE ? 2000 : 500,
+      color: type === VisualEffectType.EXPLOSION ? '#ff4444' :
+             type === VisualEffectType.POWERUP ? '#44ff44' :
+             type === VisualEffectType.HIT ? '#ffff44' :
+             type === VisualEffectType.SPAWN ? '#88ffff' :
+             type === VisualEffectType.WAVE_COMPLETE ? '#ffaa00' : '#ffffff',
+      scale: type === VisualEffectType.EXPLOSION ? 2 :
+             type === VisualEffectType.WAVE_COMPLETE ? 4 :
+             type === VisualEffectType.SPAWN ? 1.5 : 1,
+      opacity: 1
+    };
+
+    const state = this.gameState$.value;
+    state.visualEffects.push(effect);
+    this.gameState$.next(state);
+  }
+
+  movePlayer(direction: Direction): void {
+    const state = this.gameState$.value;
+    const speed = 5 * (state.player.speedBoost || 1);
+
+    switch (direction) {
+      case Direction.UP:
+        state.player.position.y = Math.max(0, state.player.position.y - speed);
+        break;
+      case Direction.DOWN:
+        state.player.position.y = Math.min(this.canvasHeight - state.player.height, state.player.position.y + speed);
+        break;
+      case Direction.LEFT:
+        state.player.position.x = Math.max(0, state.player.position.x - speed);
+        break;
+      case Direction.RIGHT:
+        state.player.position.x = Math.min(this.canvasWidth - state.player.width, state.player.position.x + speed);
+        break;
+    }
+
+    this.gameState$.next(state);
+  }
+
+  fireWeapon(): void {
+    const state = this.gameState$.value;
+    const projectileSpeed = 10;
+    const projectileWidth = 5;
+    const projectileHeight = 10;
+
+    const baseProjectile: Projectile = {
+      position: {
+        x: state.player.position.x + state.player.width / 2 - projectileWidth / 2,
+        y: state.player.position.y
+      },
+      velocity: { dx: 0, dy: -projectileSpeed },
+      width: projectileWidth,
+      height: projectileHeight,
+      damage: 20,
+      speed: projectileSpeed,
+      type: 'player',
+      color: '#00ffff',
+      isActive: true
+    };
+
+    switch (state.player.weaponLevel) {
+      case 1:
+        state.projectiles.push({ ...baseProjectile });
+        break;
+      case 2:
+        state.projectiles.push(
+          { ...baseProjectile, position: { ...baseProjectile.position, x: baseProjectile.position.x - 10 } },
+          { ...baseProjectile, position: { ...baseProjectile.position, x: baseProjectile.position.x + 10 } }
+        );
+        break;
+      case 3:
+        state.projectiles.push(
+          { ...baseProjectile },
+          { ...baseProjectile, position: { ...baseProjectile.position, x: baseProjectile.position.x - 15 }, velocity: { dx: -2, dy: -projectileSpeed } },
+          { ...baseProjectile, position: { ...baseProjectile.position, x: baseProjectile.position.x + 15 }, velocity: { dx: 2, dy: -projectileSpeed } }
+        );
+        break;
+    }
+
+    this.gameState$.next(state);
+  }
+
+  private updateWaveStatus(): void {
+    const state = this.gameState$.value;
+
+    if (state.currentWave && !state.currentWave.completed) {
+      const allEnemiesSpawned = state.currentWave.enemyTypes.every(config => {
+        if (typeof config.totalSpawned === 'undefined') {
+          config.totalSpawned = 0;
+        }
+        return config.totalSpawned >= config.count;
+      });
+
+      const noEnemiesLeft = state.enemies.length === 0;
+
+      if (allEnemiesSpawned && noEnemiesLeft) {
+        state.currentWave.completed = true;
+        console.log(`Wave ${state.wave} completed! Starting next wave...`);
+
+        const centerPosition = {
+          x: this.canvasWidth / 2,
+          y: this.canvasHeight / 2
+        };
+        this.addVisualEffect(VisualEffectType.WAVE_COMPLETE, centerPosition);
+      }
+    }
+
+    if (!state.currentWave || state.currentWave.completed) {
+      state.wave++;
+      this.createWave();
+      console.log(`Wave ${state.wave} started with config:`,
+        state.currentWave?.enemyTypes.map(et => `${et.type}: ${et.count} enemies`)
+      );
+    }
+
+    this.gameState$.next(state);
+  }
+
+  pauseGame(): void {
+    const state = this.gameState$.value;
+    state.isPaused = !state.isPaused;
+    this.gameState$.next(state);
+  }
+
+  stopPlayerMovement(): void {
+    const state = this.gameState$.value;
+    state.player.velocity = { dx: 0, dy: 0 };
+    this.gameState$.next(state);
+  }
+
+  ngOnDestroy(): void {
+    if (this.gameLoopSubscription) {
+      this.gameLoopSubscription.unsubscribe();
     }
   }
 }
