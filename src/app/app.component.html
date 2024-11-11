@@ -1,0 +1,12 @@
+<div class="game-container">
+  <mat-toolbar color="primary">
+    <span>{{ title }}</span>
+    <span class="spacer"></span>
+    <button mat-button (click)="gameBoard.startGame()">New Game</button>
+  </mat-toolbar>
+
+  <div class="game-content">
+    <app-game-board #gameBoard></app-game-board>
+    <app-game-hud></app-game-hud>
+  </div>
+</div>

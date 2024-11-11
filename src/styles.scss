@@ -1,0 +1,50 @@
+/* You can add global styles to this file, and also import other style files */
+
+/* Base styles */
+:root {
+  --primary-color: #673ab7;
+  --accent-color: #ffd740;
+  --background-color: #000;
+  --text-color: #fff;
+}
+
+/* Material Icons (if needed) */
+@import url('https://fonts.googleapis.com/icon?family=Material+Icons');
+
+/* Roboto Font */
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500&display=swap');
+
+/* Reset and base styles */
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+body {
+  font-family: 'Roboto', sans-serif;
+  background-color: var(--background-color);
+  color: var(--text-color);
+}
+
+/* Responsive breakpoints */
+:root {
+  --mobile-breakpoint: 768px;
+  --tablet-breakpoint: 1024px;
+}
+
+/* Game container styles */
+.game-container {
+  width: 100vw;
+  height: 100vh;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+}
+
+/* Mobile-specific styles */
+@media (max-width: 768px) {
+  .game-container {
+    grid-template-rows: auto 1fr auto;
+  }
+}

@@ -1,0 +1,28 @@
+<div class="game-hud">
+  <div class="game-stats">
+    <div class="stat-item">
+      <mat-icon>military_tech</mat-icon>
+      <span>Score: {{score}}</span>
+    </div>
+    <div class="stat-item">
+      <mat-icon>favorite</mat-icon>
+      <span>Health: {{health}}%</span>
+    </div>
+    <div class="stat-item">
+      <mat-icon>waves</mat-icon>
+      <span>Wave: {{wave}}</span>
+    </div>
+  </div>
+
+  <div class="game-controls">
+    <button mat-icon-button (click)="pauseGame()" class="control-button">
+      <mat-icon>pause</mat-icon>
+    </button>
+    <button mat-icon-button (click)="upgradeWeapon()" class="control-button">
+      <mat-icon>upgrade</mat-icon>
+    </button>
+    <button mat-icon-button (click)="healShip()" class="control-button">
+      <mat-icon>healing</mat-icon>
+    </button>
+  </div>
+</div>

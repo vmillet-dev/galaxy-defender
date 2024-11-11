@@ -1,0 +1,17 @@
+<div class="game-board-container">
+  <canvas #gameCanvas
+    [attr.width]="canvasWidth"
+    [attr.height]="canvasHeight">
+  </canvas>
+  <div class="mobile-controls" *ngIf="isMobileDevice">
+    <div class="control-pad">
+      <button class="control-btn up" (touchstart)="handleDirectionalTouch('up')" (touchend)="handleDirectionalTouch('none')">↑</button>
+      <div class="middle-row">
+        <button class="control-btn left" (touchstart)="handleDirectionalTouch('left')" (touchend)="handleDirectionalTouch('none')">←</button>
+        <button class="control-btn right" (touchstart)="handleDirectionalTouch('right')" (touchend)="handleDirectionalTouch('none')">→</button>
+      </div>
+      <button class="control-btn down" (touchstart)="handleDirectionalTouch('down')" (touchend)="handleDirectionalTouch('none')">↓</button>
+    </div>
+    <button class="fire-btn" (touchstart)="handleFireTouch()">FIRE</button>
+  </div>
+</div>
