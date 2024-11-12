@@ -24,6 +24,7 @@ import { Component, ElementRef, EventEmitter, HostListener, Output, ViewChild } 
       left: 20px;
       z-index: 1000;
       touch-action: none;
+      pointer-events: auto;
     }
 
     .joystick-base {
@@ -62,6 +63,7 @@ export class VirtualJoystickComponent {
 
   onTouchStart(event: TouchEvent): void {
     event.preventDefault();
+    console.log('Touch start event received');
     this.isActive = true;
     this.updateJoystickPosition(event.touches[0]);
   }
@@ -69,6 +71,7 @@ export class VirtualJoystickComponent {
   onTouchMove(event: TouchEvent): void {
     if (!this.isActive) return;
     event.preventDefault();
+    console.log('Touch move event received', { x: event.touches[0].clientX, y: event.touches[0].clientY });
     this.updateJoystickPosition(event.touches[0]);
   }
 
