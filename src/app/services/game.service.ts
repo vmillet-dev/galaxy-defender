@@ -538,28 +538,36 @@ export class GameService implements OnDestroy {
 
   updatePlayerPosition(movement: { dx: number; dy: number }): void {
     const state = this.gameState$.value;
-    const speed = 5 * (state.player.speedBoost || 1);
+    const speedMultiplier = 1; // Final reduction from 2 to 1 for precise movement
 
-    // Update player velocity based on input
+    // Immediately stop movement if no input is detected
+    if (Math.abs(movement.dx) < 0.01 && Math.abs(movement.dy) < 0.01) {
+      state.player.velocity = { dx: 0, dy: 0 };
+      this.gameState$.next(state);
+      return;
+    }
+
+    // Update velocity with speed multiplier
     state.player.velocity = {
-      dx: movement.dx * speed,
-      dy: movement.dy * speed
+      dx: movement.dx * speedMultiplier * (state.player.speedBoost || 1),
+      dy: movement.dy * speedMultiplier * (state.player.speedBoost || 1)
     };
 
-    // Update player position
-    const newX = state.player.position.x + state.player.velocity.dx;
-    const newY = state.player.position.y + state.player.velocity.dy;
-
-    // Keep player within bounds
+    // Update position
     state.player.position.x = Math.max(
       state.player.width / 2,
-      Math.min(newX, this.canvasWidth - state.player.width / 2)
+      Math.min(
+        state.player.position.x + state.player.velocity.dx,
+        this.canvasWidth - state.player.width / 2
+      )
     );
     state.player.position.y = Math.max(
       state.player.height / 2,
-      Math.min(newY, this.canvasHeight - state.player.height / 2)
+      Math.min(
+        state.player.position.y + state.player.velocity.dy,
+        this.canvasHeight - state.player.height / 2
+      )
     );
-
     this.gameState$.next(state);
   }
 

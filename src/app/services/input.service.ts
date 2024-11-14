@@ -75,9 +75,12 @@ export class InputService {
       map(event => {
         if (event.code === 'Space') {
           event.preventDefault();
-          return;
+          return void 0; // Emit void when space is pressed
         }
-      })
+        return undefined; // Filter out non-space key presses
+      }),
+      // Filter out undefined values (non-space key presses)
+      map(value => value as void)
     );
 
     // Touch fire control (tap)
