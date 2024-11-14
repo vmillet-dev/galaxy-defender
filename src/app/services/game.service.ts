@@ -149,6 +149,16 @@ export class GameService implements OnDestroy {
   startGame(): void {
     this.updateCanvasDimensions();
     const state = this.gameState$.value;
+    state.player.position = {
+      x: this.canvasWidth / 2,
+      y: this.canvasHeight - 100
+    };
+    state.player.velocity = { dx: 0, dy: 0 };
+    state.player.health = state.player.maxHealth;
+    state.player.weaponLevel = 1;
+    state.player.shieldActive = false;
+    state.player.speedBoost = 1;
+
     state.gameOver = false;
     state.isPaused = false;
     state.score = 0;
@@ -184,6 +194,22 @@ export class GameService implements OnDestroy {
   private updatePositions(): void {
     const state = this.gameState$.value;
 
+    // Update player position based on current velocity
+    if (state.player.velocity.dx !== 0 || state.player.velocity.dy !== 0) {
+      const newX = state.player.position.x + state.player.velocity.dx;
+      const newY = state.player.position.y + state.player.velocity.dy;
+
+      // Keep player within bounds
+      state.player.position.x = Math.max(
+        state.player.width / 2,
+        Math.min(newX, this.canvasWidth - state.player.width / 2)
+      );
+      state.player.position.y = Math.max(
+        state.player.height / 2,
+        Math.min(newY, this.canvasHeight - state.player.height / 2)
+      );
+    }
+
     state.enemies.forEach(enemy => this.updateEnemyPosition(enemy));
 
     state.projectiles.forEach(projectile => {
@@ -192,7 +218,7 @@ export class GameService implements OnDestroy {
     });
 
     state.powerUps.forEach(powerUp => {
-      powerUp.position.y += 1; // Power-ups fall slowly
+      powerUp.position.y += 1;
     });
 
     state.visualEffects = state.visualEffects.filter(effect => {
@@ -387,11 +413,14 @@ export class GameService implements OnDestroy {
   }
 
   private detectCollision(a: GameObject, b: GameObject): boolean {
+    const isEnemy = (obj: GameObject) => 'type' in obj && (obj as Enemy).type !== undefined;
+    const buffer = (isEnemy(a) || isEnemy(b)) ? 15 : 0;
+
     return (
-      a.position.x < b.position.x + b.width &&
-      a.position.x + a.width > b.position.x &&
-      a.position.y < b.position.y + b.height &&
-      a.position.y + a.height > b.position.y
+      a.position.x < b.position.x + b.width + buffer &&
+      a.position.x + a.width > b.position.x - buffer &&
+      a.position.y < b.position.y + b.height + buffer &&
+      a.position.y + a.height > b.position.y - buffer
     );
   }
 
@@ -491,18 +520,45 @@ export class GameService implements OnDestroy {
 
     switch (direction) {
       case Direction.UP:
-        state.player.position.y = Math.max(0, state.player.position.y - speed);
+        state.player.velocity.dy = -speed;
         break;
       case Direction.DOWN:
-        state.player.position.y = Math.min(this.canvasHeight - state.player.height, state.player.position.y + speed);
+        state.player.velocity.dy = speed;
         break;
       case Direction.LEFT:
-        state.player.position.x = Math.max(0, state.player.position.x - speed);
+        state.player.velocity.dx = -speed;
         break;
       case Direction.RIGHT:
-        state.player.position.x = Math.min(this.canvasWidth - state.player.width, state.player.position.x + speed);
+        state.player.velocity.dx = speed;
         break;
     }
+
+    this.gameState$.next(state);
+  }
+
+  updatePlayerPosition(movement: { dx: number; dy: number }): void {
+    const state = this.gameState$.value;
+    const speed = 5 * (state.player.speedBoost || 1);
+
+    // Update player velocity based on input
+    state.player.velocity = {
+      dx: movement.dx * speed,
+      dy: movement.dy * speed
+    };
+
+    // Update player position
+    const newX = state.player.position.x + state.player.velocity.dx;
+    const newY = state.player.position.y + state.player.velocity.dy;
+
+    // Keep player within bounds
+    state.player.position.x = Math.max(
+      state.player.width / 2,
+      Math.min(newX, this.canvasWidth - state.player.width / 2)
+    );
+    state.player.position.y = Math.max(
+      state.player.height / 2,
+      Math.min(newY, this.canvasHeight - state.player.height / 2)
+    );
 
     this.gameState$.next(state);
   }
