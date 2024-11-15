@@ -1,6 +1,6 @@
 .game-board-container {
-  width: 100%;
-  height: 100%;
+  width: 100vw;
+  height: 100vh;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -10,10 +10,10 @@
 }
 
 canvas {
-  max-width: 100%;
-  max-height: 100%;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
-  image-rendering: pixelated; // For crisp pixel art if needed
+  image-rendering: pixelated;
   image-rendering: crisp-edges;
 }
 
