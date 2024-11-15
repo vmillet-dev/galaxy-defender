@@ -59,6 +59,16 @@ export class GameBoardComponent implements OnInit, OnDestroy, AfterViewInit {
         container.focus();
       });
 
+      // Add direct window event listener for spacebar
+      window.addEventListener('keydown', (event: KeyboardEvent) => {
+        console.log('Window keydown event:', event.code, event.key);
+        if (event.code === 'Space' || event.key === ' ' || event.key === 'Spacebar') {
+          console.log('Spacebar pressed - firing weapon from game board');
+          event.preventDefault();
+          this.gameService.fireWeapon();
+        }
+      });
+
       // Subscribe to continuous movement updates
       this.inputSubscriptions.push(
         this.inputService.setupInputHandlers(container).subscribe(movement => {
