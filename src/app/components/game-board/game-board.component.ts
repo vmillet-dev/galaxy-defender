@@ -1,4 +1,4 @@
-import { Component, ElementRef, OnDestroy, OnInit, ViewChild, AfterViewInit } from '@angular/core';
+import { Component, ElementRef, OnDestroy, OnInit, ViewChild, AfterViewInit, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { GameService } from '../../services/game.service';
 import { InputService } from '../../services/input.service';
@@ -30,7 +30,8 @@ export class GameBoardComponent implements OnInit, OnDestroy, AfterViewInit {
 
   constructor(
     private gameService: GameService,
-    private inputService: InputService
+    private inputService: InputService,
+    private ngZone: NgZone
   ) {
     // Listen for window resize
     window.addEventListener('resize', () => {
@@ -59,14 +60,18 @@ export class GameBoardComponent implements OnInit, OnDestroy, AfterViewInit {
         container.focus();
       });
 
-      // Add direct window event listener for spacebar
-      window.addEventListener('keydown', (event: KeyboardEvent) => {
-        console.log('Window keydown event:', event.code, event.key);
-        if (event.code === 'Space' || event.key === ' ' || event.key === 'Spacebar') {
-          console.log('Spacebar pressed - firing weapon from game board');
-          event.preventDefault();
-          this.gameService.fireWeapon();
-        }
+      // Add keyboard event listener for spacebar
+      this.ngZone.runOutsideAngular(() => {
+        window.addEventListener('keydown', (event: KeyboardEvent) => {
+          console.log('Window keydown event:', event.code, event.key);
+          if (event.code === 'Space' || event.key === ' ' || event.key === 'Spacebar') {
+            event.preventDefault();
+            this.ngZone.run(() => {
+              console.log('Spacebar pressed - firing weapon');
+              this.gameService.fireWeapon();
+            });
+          }
+        });
       });
 
       // Subscribe to continuous movement updates
