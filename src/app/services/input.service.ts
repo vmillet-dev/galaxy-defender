@@ -1,12 +1,13 @@
 import { Injectable } from '@angular/core';
-import { fromEvent, merge, Observable, interval } from 'rxjs';
-import { map, tap, switchMap, startWith } from 'rxjs/operators';
+import { fromEvent, merge, Observable } from 'rxjs';
+import { map, tap } from 'rxjs/operators';
 
 @Injectable({
   providedIn: 'root'
 })
 export class InputService {
-  private readonly MOVEMENT_SPEED = 5;
+  private readonly MOVEMENT_SPEED = 1;
+  private readonly VELOCITY_THRESHOLD = 0.01;
   private activeKeys = new Set<string>();
   private joystickMovement = { dx: 0, dy: 0 };
 
@@ -26,39 +27,58 @@ export class InputService {
       })
     );
 
-    // Continuous movement stream for keyboard
+    // Keyboard movement stream
     const keyboardInput = merge(keyDown, keyUp).pipe(
-      startWith(null),
-      switchMap(() => interval(16).pipe( // ~60fps update rate
-        map(() => {
-          const movement = { dx: 0, dy: 0 };
-          const speed = this.MOVEMENT_SPEED;
+      map(() => {
+        const movement = { dx: 0, dy: 0 };
 
-          if (this.activeKeys.has('ArrowLeft') || this.activeKeys.has('a')) {
-            movement.dx -= speed;
-          }
-          if (this.activeKeys.has('ArrowRight') || this.activeKeys.has('d')) {
-            movement.dx += speed;
-          }
-          if (this.activeKeys.has('ArrowUp') || this.activeKeys.has('w')) {
-            movement.dy -= speed;
-          }
-          if (this.activeKeys.has('ArrowDown') || this.activeKeys.has('s')) {
-            movement.dy += speed;
-          }
-
+        // If no keys are pressed, return zero movement immediately
+        if (this.activeKeys.size === 0) {
           return movement;
-        })
-      ))
+        }
+
+        const speed = this.MOVEMENT_SPEED;
+
+        if (this.activeKeys.has('ArrowLeft') || this.activeKeys.has('a') || this.activeKeys.has('q')) {
+          movement.dx -= speed;
+        }
+        if (this.activeKeys.has('ArrowRight') || this.activeKeys.has('d')) {
+          movement.dx += speed;
+        }
+        if (this.activeKeys.has('ArrowUp') || this.activeKeys.has('w') || this.activeKeys.has('z')) {
+          movement.dy -= speed;
+        }
+        if (this.activeKeys.has('ArrowDown') || this.activeKeys.has('s')) {
+          movement.dy += speed;
+        }
+
+        return movement;
+      })
     );
 
     // Joystick movement stream
-    const joystickInput = interval(16).pipe(
-      map(() => ({
-        dx: this.joystickMovement.dx * this.MOVEMENT_SPEED,
-        dy: this.joystickMovement.dy * this.MOVEMENT_SPEED
-      }))
+    const touchMove = fromEvent<TouchEvent>(gameContainer, 'touchmove').pipe(
+      map(() => {
+        // Only apply joystick movement if there's actual movement
+        if (Math.abs(this.joystickMovement.dx) < this.VELOCITY_THRESHOLD &&
+            Math.abs(this.joystickMovement.dy) < this.VELOCITY_THRESHOLD) {
+          return { dx: 0, dy: 0 };
+        }
+        return {
+          dx: this.joystickMovement.dx * this.MOVEMENT_SPEED,
+          dy: this.joystickMovement.dy * this.MOVEMENT_SPEED
+        };
+      })
     );
+
+    const touchEnd = fromEvent<TouchEvent>(gameContainer, 'touchend').pipe(
+      tap(() => {
+        this.joystickMovement = { dx: 0, dy: 0 };
+      }),
+      map(() => ({ dx: 0, dy: 0 }))
+    );
+
+    const joystickInput = merge(touchMove, touchEnd);
 
     // Merge keyboard and joystick inputs
     return merge(keyboardInput, joystickInput);

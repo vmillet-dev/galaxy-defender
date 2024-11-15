@@ -23,7 +23,7 @@ export class GameBoardComponent implements OnInit, OnDestroy {
 
   // Public properties for canvas dimensions
   public canvasWidth: number = window.innerWidth;
-  public canvasHeight: number = window.innerHeight - 100; // Subtract toolbar height
+  public canvasHeight: number = window.innerHeight;
   public isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
   constructor(
@@ -33,7 +33,7 @@ export class GameBoardComponent implements OnInit, OnDestroy {
     // Listen for window resize
     window.addEventListener('resize', () => {
       this.canvasWidth = window.innerWidth;
-      this.canvasHeight = window.innerHeight - 100;
+      this.canvasHeight = window.innerHeight;
       this.setupCanvas();
     });
   }
