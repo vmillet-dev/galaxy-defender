@@ -76,10 +76,10 @@ export class InputService {
   }
 
   setupFireHandler(gameContainer: HTMLElement): Observable<void> {
-    console.log('Setting up fire handler for container:', gameContainer);
+    console.log('Setting up fire handler');
 
-    // Keyboard fire control with enhanced debug logging
-    const keyboardFire = fromEvent<KeyboardEvent>(gameContainer, 'keydown').pipe(
+    // Keyboard fire control with enhanced debug logging - bind to window for global keyboard capture
+    const keyboardFire = fromEvent<KeyboardEvent>(window, 'keydown').pipe(
       tap(event => {
         console.log('Keydown event detected:', {
           code: event.code,
