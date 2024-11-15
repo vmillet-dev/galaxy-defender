@@ -34,13 +34,13 @@ export class InputService {
           const movement = { dx: 0, dy: 0 };
           const speed = this.MOVEMENT_SPEED;
 
-          if (this.activeKeys.has('ArrowLeft') || this.activeKeys.has('a')) {
+          if (this.activeKeys.has('ArrowLeft') || this.activeKeys.has('a') || this.activeKeys.has('q')) {
             movement.dx -= speed;
           }
           if (this.activeKeys.has('ArrowRight') || this.activeKeys.has('d')) {
             movement.dx += speed;
           }
-          if (this.activeKeys.has('ArrowUp') || this.activeKeys.has('w')) {
+          if (this.activeKeys.has('ArrowUp') || this.activeKeys.has('w') || this.activeKeys.has('z')) {
             movement.dy -= speed;
           }
           if (this.activeKeys.has('ArrowDown') || this.activeKeys.has('s')) {
