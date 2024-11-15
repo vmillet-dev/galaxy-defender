@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { fromEvent, merge, Observable } from 'rxjs';
-import { map, tap } from 'rxjs/operators';
+import { filter, map, tap } from 'rxjs/operators';
 
 @Injectable({
   providedIn: 'root'
@@ -78,20 +78,14 @@ export class InputService {
   setupFireHandler(gameContainer: HTMLElement): Observable<void> {
     // Keyboard fire control
     const keyboardFire = fromEvent<KeyboardEvent>(window, 'keydown').pipe(
-      map(event => {
-        if (event.code === 'Space') {
-          event.preventDefault();
-          return void 0; // Emit void when space is pressed
-        }
-        return undefined; // Filter out non-space key presses
-      }),
-      // Filter out undefined values (non-space key presses)
-      map(value => value as void)
+      filter((event: KeyboardEvent) => event.code === 'Space'),
+      tap((event: KeyboardEvent) => event.preventDefault()),
+      map(() => void 0)
     );
 
     // Touch fire control (tap)
     const touchFire = fromEvent<TouchEvent>(gameContainer, 'touchstart').pipe(
-      tap(event => event.preventDefault()),
+      tap((event: TouchEvent) => event.preventDefault()),
       map(() => void 0)
     );
 
