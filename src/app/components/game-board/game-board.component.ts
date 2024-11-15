@@ -50,6 +50,11 @@ export class GameBoardComponent implements OnInit, OnDestroy {
         this.gameService.updatePlayerPosition(movement);
       }
     });
+
+    // Subscribe to fire events
+    this.inputService.setupFireHandler(canvas.parentElement!).subscribe(() => {
+      this.gameService.fireWeapon();
+    });
   }
 
   ngOnDestroy(): void {
