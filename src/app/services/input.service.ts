@@ -14,13 +14,13 @@ export class InputService {
 
   setupInputHandlers(gameContainer: HTMLElement): Observable<{ dx: number; dy: number }> {
     // Track key states
-    const keyDown = fromEvent<KeyboardEvent>(window, 'keydown').pipe(
+    const keyDown = fromEvent<KeyboardEvent>(gameContainer, 'keydown').pipe(
       tap(event => {
         this.activeKeys.add(event.key);
       })
     );
 
-    const keyUp = fromEvent<KeyboardEvent>(window, 'keyup').pipe(
+    const keyUp = fromEvent<KeyboardEvent>(gameContainer, 'keyup').pipe(
       tap(event => {
         this.activeKeys.delete(event.key);
       })
@@ -76,10 +76,18 @@ export class InputService {
   }
 
   setupFireHandler(gameContainer: HTMLElement): Observable<void> {
-    // Keyboard fire control
-    const keyboardFire = fromEvent<KeyboardEvent>(window, 'keydown').pipe(
-      filter((event: KeyboardEvent) => event.code === 'Space'),
-      tap((event: KeyboardEvent) => event.preventDefault()),
+    // Keyboard fire control with debug logging
+    const keyboardFire = fromEvent<KeyboardEvent>(gameContainer, 'keydown').pipe(
+      tap(event => console.log('Keydown event:', event.code, event.key)),
+      filter((event: KeyboardEvent) =>
+        event.code === 'Space' ||
+        event.key === ' ' ||
+        event.key === 'Spacebar'
+      ),
+      tap((event: KeyboardEvent) => {
+        console.log('Space pressed - firing weapon');
+        event.preventDefault();
+      }),
       map(() => void 0)
     );
 
@@ -89,6 +97,7 @@ export class InputService {
       map(() => void 0)
     );
 
+    // Merge keyboard and touch fire events
     return merge(keyboardFire, touchFire);
   }
 }
