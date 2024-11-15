@@ -62,7 +62,7 @@ export class GameService implements OnDestroy {
         width: 20,
         height: 40,
         health: 100,
-        speed: 2,
+        speed: 3,  // Increased from 2
         color: '#00ff00',
         points: 10,
         dropChance: 0.2,
@@ -72,7 +72,7 @@ export class GameService implements OnDestroy {
         width: 15,
         height: 30,
         health: 75,
-        speed: 4,
+        speed: 6,  // Increased from 4
         color: '#00ffff',
         points: 20,
         dropChance: 0.3,
@@ -82,7 +82,7 @@ export class GameService implements OnDestroy {
         width: 30,
         height: 45,
         health: 200,
-        speed: 1,
+        speed: 1.5,  // Increased from 1
         color: '#ff9900',
         points: 30,
         dropChance: 0.4,
@@ -92,7 +92,7 @@ export class GameService implements OnDestroy {
         width: 25,
         height: 50,
         health: 150,
-        speed: 3,
+        speed: 4.5,  // Increased from 3
         color: '#ff00ff',
         points: 40,
         dropChance: 0.6,
@@ -102,7 +102,7 @@ export class GameService implements OnDestroy {
         width: 60,
         height: 80,
         health: 500,
-        speed: 1.5,
+        speed: 2.25,  // Increased from 1.5
         color: '#ff0000',
         points: 100,
         dropChance: 1.0,
