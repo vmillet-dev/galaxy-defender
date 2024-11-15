@@ -1,4 +1,4 @@
-import { Component, ElementRef, OnDestroy, OnInit, ViewChild } from '@angular/core';
+import { Component, ElementRef, OnDestroy, OnInit, ViewChild, AfterViewInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { GameService } from '../../services/game.service';
 import { InputService } from '../../services/input.service';
@@ -14,12 +14,14 @@ import { VirtualJoystickComponent } from '../virtual-joystick/virtual-joystick.c
   templateUrl: './game-board.component.html',
   styleUrls: ['./game-board.component.scss']
 })
-export class GameBoardComponent implements OnInit, OnDestroy {
+export class GameBoardComponent implements OnInit, OnDestroy, AfterViewInit {
   Direction = Direction; // Expose Direction enum to template
   @ViewChild('gameCanvas', { static: true }) private canvas!: ElementRef<HTMLCanvasElement>;
+  @ViewChild('gameContainer') private gameContainer!: ElementRef<HTMLDivElement>;
   private ctx!: CanvasRenderingContext2D;
   private gameStateSubscription?: Subscription;
   private animationFrameId?: number;
+  private inputSubscriptions: Subscription[] = [];
 
   // Public properties for canvas dimensions
   public canvasWidth: number = window.innerWidth;
@@ -43,18 +45,37 @@ export class GameBoardComponent implements OnInit, OnDestroy {
     this.ctx = canvas.getContext('2d')!;
     this.setupCanvas();
     this.startGame();
+  }
 
-    // Subscribe to continuous movement updates
-    this.inputService.setupInputHandlers(canvas.parentElement!).subscribe(movement => {
-      if (movement.dx !== 0 || movement.dy !== 0) {
-        this.gameService.updatePlayerPosition(movement);
-      }
-    });
+  ngAfterViewInit(): void {
+    if (this.gameContainer?.nativeElement) {
+      const container = this.gameContainer.nativeElement;
 
-    // Subscribe to fire events
-    this.inputService.setupFireHandler(canvas.parentElement!).subscribe(() => {
-      this.gameService.fireWeapon();
-    });
+      // Focus the game container after view initialization
+      container.focus();
+
+      // Ensure container keeps focus when clicked
+      container.addEventListener('mousedown', () => {
+        container.focus();
+      });
+
+      // Subscribe to continuous movement updates
+      this.inputSubscriptions.push(
+        this.inputService.setupInputHandlers(container).subscribe(movement => {
+          if (movement.dx !== 0 || movement.dy !== 0) {
+            this.gameService.updatePlayerPosition(movement);
+          }
+        })
+      );
+
+      // Subscribe to fire events with debug logging
+      this.inputSubscriptions.push(
+        this.inputService.setupFireHandler(container).subscribe(() => {
+          console.log('Fire event received in game board');
+          this.gameService.fireWeapon();
+        })
+      );
+    }
   }
 
   ngOnDestroy(): void {
