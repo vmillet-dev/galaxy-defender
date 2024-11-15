@@ -7,6 +7,7 @@ import { map, tap } from 'rxjs/operators';
 })
 export class InputService {
   private readonly MOVEMENT_SPEED = 1;
+  private readonly VELOCITY_THRESHOLD = 0.01;
   private activeKeys = new Set<string>();
   private joystickMovement = { dx: 0, dy: 0 };
 
@@ -30,6 +31,12 @@ export class InputService {
     const keyboardInput = merge(keyDown, keyUp).pipe(
       map(() => {
         const movement = { dx: 0, dy: 0 };
+
+        // If no keys are pressed, return zero movement immediately
+        if (this.activeKeys.size === 0) {
+          return movement;
+        }
+
         const speed = this.MOVEMENT_SPEED;
 
         if (this.activeKeys.has('ArrowLeft') || this.activeKeys.has('a') || this.activeKeys.has('q')) {
@@ -51,10 +58,17 @@ export class InputService {
 
     // Joystick movement stream
     const touchMove = fromEvent<TouchEvent>(gameContainer, 'touchmove').pipe(
-      map(() => ({
-        dx: this.joystickMovement.dx * this.MOVEMENT_SPEED,
-        dy: this.joystickMovement.dy * this.MOVEMENT_SPEED
-      }))
+      map(() => {
+        // Only apply joystick movement if there's actual movement
+        if (Math.abs(this.joystickMovement.dx) < this.VELOCITY_THRESHOLD &&
+            Math.abs(this.joystickMovement.dy) < this.VELOCITY_THRESHOLD) {
+          return { dx: 0, dy: 0 };
+        }
+        return {
+          dx: this.joystickMovement.dx * this.MOVEMENT_SPEED,
+          dy: this.joystickMovement.dy * this.MOVEMENT_SPEED
+        };
+      })
     );
 
     const touchEnd = fromEvent<TouchEvent>(gameContainer, 'touchend').pipe(

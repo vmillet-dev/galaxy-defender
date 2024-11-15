@@ -195,7 +195,9 @@ export class GameService implements OnDestroy {
     const state = this.gameState$.value;
 
     // Update player position based on current velocity
-    if (state.player.velocity.dx !== 0 || state.player.velocity.dy !== 0) {
+    const hasSignificantVelocity = Math.abs(state.player.velocity.dx) > 0.01 || Math.abs(state.player.velocity.dy) > 0.01;
+
+    if (hasSignificantVelocity) {
       const newX = state.player.position.x + state.player.velocity.dx;
       const newY = state.player.position.y + state.player.velocity.dy;
 
@@ -208,8 +210,11 @@ export class GameService implements OnDestroy {
         state.player.height / 2,
         Math.min(newY, this.canvasHeight - state.player.height / 2)
       );
+    } else {
+      state.player.velocity = { dx: 0, dy: 0 };
     }
 
+    // Update other game entities
     state.enemies.forEach(enemy => this.updateEnemyPosition(enemy));
 
     state.projectiles.forEach(projectile => {
