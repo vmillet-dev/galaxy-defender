@@ -76,14 +76,23 @@ export class InputService {
   }
 
   setupFireHandler(gameContainer: HTMLElement): Observable<void> {
-    // Keyboard fire control with debug logging
+    console.log('Setting up fire handler for container:', gameContainer);
+
+    // Keyboard fire control with enhanced debug logging
     const keyboardFire = fromEvent<KeyboardEvent>(gameContainer, 'keydown').pipe(
-      tap(event => console.log('Keydown event:', event.code, event.key)),
-      filter((event: KeyboardEvent) =>
-        event.code === 'Space' ||
-        event.key === ' ' ||
-        event.key === 'Spacebar'
-      ),
+      tap(event => {
+        console.log('Keydown event detected:', {
+          code: event.code,
+          key: event.key,
+          target: event.target,
+          currentTarget: event.currentTarget
+        });
+      }),
+      filter((event: KeyboardEvent) => {
+        const isSpaceKey = event.code === 'Space' || event.key === ' ' || event.key === 'Spacebar';
+        console.log('Is space key?', isSpaceKey);
+        return isSpaceKey;
+      }),
       tap((event: KeyboardEvent) => {
         console.log('Space pressed - firing weapon');
         event.preventDefault();
